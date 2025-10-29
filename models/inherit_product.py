@@ -1,12 +1,12 @@
-from odoo import models, api
-import json
+from odoo import models
+import hashlib
 
 
 class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
     def download_variant_images(self):
-        """Trigger download of all variant images individually"""
+        """Trigger download of unique variant images only"""
         variants = self.product_variant_ids.filtered(lambda v: v.image_1920)
 
         if not variants:
@@ -19,9 +19,22 @@ class ProductTemplate(models.Model):
                 }
             }
 
-        # Prepare image data for JavaScript
+        # Track unique images by hash
+        unique_images = {}
         images = []
+
         for variant in variants:
+            # Create hash of image data to detect duplicates
+            # variant.image_1920 is already bytes, no need to encode
+            image_hash = hashlib.md5(variant.image_1920).hexdigest()
+
+            # Skip if we've already seen this image
+            if image_hash in unique_images:
+                continue
+
+            # Mark this hash as seen
+            unique_images[image_hash] = True
+
             # Create temporary attachment for download
             attachment = self.env['ir.attachment'].create({
                 'name': f"{variant.default_code or variant.id}_{variant.name}.png",
@@ -30,7 +43,7 @@ class ProductTemplate(models.Model):
                 'mimetype': 'image/png',
                 'res_model': 'product.product',
                 'res_id': variant.id,
-                'public': True,  # Temporary public access
+                'public': True,
             })
 
             images.append({
@@ -39,12 +52,23 @@ class ProductTemplate(models.Model):
                 'url': f'/web/content/{attachment.id}?download=true'
             })
 
+        if not images:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'message': 'All variant images are duplicates',
+                    'type': 'warning',
+                }
+            }
+
         # Return client action to trigger downloads
         return {
             'type': 'ir.actions.client',
             'tag': 'download_multiple_images',
             'params': {
                 'images': images,
-                'total': len(images)
+                'total': len(images),
+                'skipped': len(variants) - len(images)
             }
         }
