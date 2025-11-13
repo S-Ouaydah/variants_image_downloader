@@ -2,10 +2,9 @@
     "name": "Variant Images Downloader",
     "summary": "Download all product variant images from the template form",
     'author': "Slomax",
-    "sequence": 200,
     'category': 'Sales',
     'license': 'OPL-1',
-    "Version": "0.1",
+    "Version": "0.2",
     "depends": ["base", "product", "sale"],
     'data': [
         "views/product_template_views.xml",

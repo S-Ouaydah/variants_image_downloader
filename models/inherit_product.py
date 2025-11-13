@@ -2,6 +2,47 @@ from odoo import models
 import hashlib
 
 
+class ProductVariant(models.Model):
+    _inherit = 'product.product'
+
+    def download_variant_images(self):
+        """Trigger download of this variant's image"""
+        if not self.image_1920:
+            return
+        # Search for existing attachment for this product's image
+        attachment = self.env['ir.attachment'].search([
+            ('res_model', '=', 'product.product'),
+            ('res_id', '=', self.id),
+            ('res_field', '=', 'image_1920'),
+        ], limit=1)
+
+        # If no attachment exists, create one
+        if not attachment:
+            attachment = self.env['ir.attachment'].create({
+                'name': f"{self.default_code or self.id}_{self.name}.png",
+                'type': 'binary',
+                'datas': self.image_1920,
+                'mimetype': 'image/png',
+                'res_model': 'product.product',
+                'res_id': self.id,
+                'res_field': 'image_1920',
+                'public': True,
+            })
+
+        # Return client action to trigger download
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'download_image',
+            'params': {
+                'image': {
+                    'id': attachment.id,
+                    'name': attachment.name or f"{self.default_code or self.id}_{self.name}.png",
+                    'url': f'/web/content/{attachment.id}?download=true'
+                }
+            }
+        }
+
+
 class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
@@ -25,7 +66,6 @@ class ProductTemplate(models.Model):
 
         for variant in variants:
             # Create hash of image data to detect duplicates
-            # variant.image_1920 is already bytes, no need to encode
             image_hash = hashlib.md5(variant.image_1920).hexdigest()
 
             # Skip if we've already seen this image
@@ -35,20 +75,29 @@ class ProductTemplate(models.Model):
             # Mark this hash as seen
             unique_images[image_hash] = True
 
-            # Create temporary attachment for download
-            attachment = self.env['ir.attachment'].create({
-                'name': f"{variant.default_code or variant.id}_{variant.name}.png",
-                'type': 'binary',
-                'datas': variant.image_1920,
-                'mimetype': 'image/png',
-                'res_model': 'product.product',
-                'res_id': variant.id,
-                'public': True,
-            })
+            # Search for existing attachment for this variant's image
+            attachment = self.env['ir.attachment'].search([
+                ('res_model', '=', 'product.product'),
+                ('res_id', '=', variant.id),
+                ('res_field', '=', 'image_1920'),
+            ], limit=1)
+
+            # If no attachment exists, create one
+            if not attachment:
+                attachment = self.env['ir.attachment'].create({
+                    'name': f"{variant.default_code or variant.id}_{variant.name}.png",
+                    'type': 'binary',
+                    'datas': variant.image_1920,
+                    'mimetype': 'image/png',
+                    'res_model': 'product.product',
+                    'res_id': variant.id,
+                    'res_field': 'image_1920',
+                    'public': True,
+                })
 
             images.append({
                 'id': attachment.id,
-                'name': attachment.name,
+                'name': attachment.name or f"{variant.default_code or variant.id}_{variant.name}.png",
                 'url': f'/web/content/{attachment.id}?download=true'
             })
 
